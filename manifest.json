@@ -1,0 +1,23 @@
+{
+  "name": "Moniepoint Clone",
+  "short_name": "Moniepoint",
+  "description": "Premium Fintech Banking Experience",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050C1F",
+  "theme_color": "#050C1F",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/10149/10149458.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/10149/10149458.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
