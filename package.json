@@ -11,6 +11,15 @@
   "dependencies": {
     "react-dom": "19.2.3",
     "react": "19.2.3",
+    "./App": "latest",
+    "./types": "latest",
+    "./banks": "latest",
+    "./AuthScreens": "latest",
+    "./UserStore": "latest",
+    "./AdminStore": "latest",
+    "./WalletStore": "latest",
+    "./AdminPanel": "latest",
+    "./icons": "latest",
     "@google/genai": "^1.38.0"
   },
   "devDependencies": {
