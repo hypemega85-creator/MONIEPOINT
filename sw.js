@@ -1,29 +1,22 @@
-const CACHE_NAME = 'mp-ai-v1';
-const ASSETS = [
+const CACHE_NAME = 'moniepoint-cache-v1';
+const urlsToCache = [
   '/',
   '/index.html',
-  '/manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/@babel/standalone/babel.min.js'
+  '/index.tsx',
+  '/types.ts',
+  '/App.tsx'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
   );
 });
 
-self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    caches.match(e.request).then((res) => {
-      return res || fetch(e.request).then((response) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          if (e.request.url.startsWith('http')) {
-            cache.put(e.request, response.clone());
-          }
-          return response;
-        });
-      });
-    }).catch(() => caches.match('/index.html'))
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
   );
 });
