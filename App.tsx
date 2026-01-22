@@ -41,8 +41,6 @@ import {
   SettingsIcon
 } from './icons';
 
-const NUBAPI_KEY = "d5wkK9gUVrSUgRDA8DDTog4wIjrdrBhvo3itciUM806bca40".trim();
-
 const RAW_COUNTRIES = [
   { name: 'Nigeria', flag: '🇳🇬', code: '+234' },
   { name: 'United States', flag: '🇺🇸', code: '+1' },
@@ -354,9 +352,8 @@ const WalletChatFlow: React.FC<{ userId: string, onClose: () => void, plan?: Wal
   return (
     <div className="fixed inset-0 z-[3000] bg-[#050C1F] flex flex-col animate-slide-up">
       <header className="px-6 py-6 border-b border-white/5 flex items-center justify-between bg-[#0A162B] shrink-0">
-        <button onClick={onClose} className="p-2 -ml-2 text-white/40 hover:text-white transition-colors"><ArrowLeftIcon className="w-5 h-5" /></button>
+        <button onClick={onClose} className="p-2 -ml-2 text-white/40 hover:text-white transition-colors"><ArrowLeftIcon className="w-6 h-6" /></button>
         <div className="text-center"><h3 className="text-sm font-black text-white uppercase tracking-widest">Secure Terminal</h3><span className="text-[9px] text-[#00D775] font-bold uppercase tracking-widest">Encrypted Session</span></div>
-        {/* Fixed malformed div below */}
         <div className="w-8"></div>
       </header>
       <div className="flex-grow overflow-y-auto p-6 space-y-4 scrollbar-hide">
@@ -398,31 +395,6 @@ const WalletChatFlow: React.FC<{ userId: string, onClose: () => void, plan?: Wal
   );
 };
 
-const VerifyingAccountWidget: React.FC<{ 
-  verifyAccount: () => Promise<string>; 
-  onComplete: (name: string) => void; 
-  onError: (err: any) => void;
-}> = ({ verifyAccount, onComplete, onError }) => {
-  useEffect(() => {
-    let active = true;
-    verifyAccount().then(name => { if (active) onComplete(name); }).catch(err => { if (active) onError(err); });
-    return () => { active = false; };
-  }, [verifyAccount, onComplete, onError]);
-  return (
-    <div className="bg-[#111F35] p-3 rounded-xl border border-white/5 flex items-center gap-3 animate-pulse shadow-lg">
-      <div className="relative">
-        <div className="w-10 h-10 bg-[#1D2B44] rounded-full flex items-center justify-center font-bold text-white/30 text-[11px]">
-          <div className="w-5 h-5 border-2 border-t-[#FBC02D] border-white/10 rounded-full animate-spin"></div>
-        </div>
-      </div>
-      <div className="flex-grow min-w-0">
-        <div className="h-3 bg-white/20 rounded-full w-24 mb-2 animate-pulse"></div>
-        <div className="h-2 bg-white/10 rounded-full w-32 animate-pulse"></div>
-      </div>
-    </div>
-  );
-};
-
 const AddMoneyFlow: React.FC<{ userId: string, onClose: () => void }> = ({ userId, onClose }) => {
   return (
     <WalletChatFlow 
@@ -449,7 +421,6 @@ const App: React.FC = () => {
   const [receiverAccount, setReceiverAccount] = useState("");
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [bankSearchQuery, setBankSearchQuery] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
   const [verifiedAccountName, setVerifiedAccountName] = useState("");
   const [isConfirmingRecipient, setIsConfirmingRecipient] = useState(false);
   const [saveAsBeneficiary, setSaveAsBeneficiary] = useState(false);
@@ -466,24 +437,30 @@ const App: React.FC = () => {
   const [availabilitySeed, setAvailabilitySeed] = useState(Date.now());
   const [selectedInboxNumber, setSelectedInboxNumber] = useState<BoughtNumber | null>(null);
   const [replyInput, setReplyInput] = useState("");
-  const [selectedMyCardId, setSelectedMyCardId] = useState<string | null>(null);
   
   const [pinMode, setPinMode] = useState<'inactive' | 'setup' | 'confirm' | 'verify' | 'change_old' | 'change_new' | 'change_confirm'>('inactive');
   const [tempPin, setTempPin] = useState("");
   const [pinError, setPinError] = useState("");
-  const [biometricSupported, setBiometricSupported] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
+  // Locked Card Details UI State
   const [lockedHoverCardId, setLockedHoverCardId] = useState<string | null>(null);
   const [showLockedTooltip, setShowLockedTooltip] = useState<string | null>(null);
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('mp_transactions');
-    return saved ? JSON.parse(saved) : [{ id: '1', type: 'incoming', title: 'Opay (507872******0070)', details: '03 Jan, 08:13 AM', amount: 2600.00, date: '03 Jan', timestamp: '08:13 AM', status: 'SUCCESS' }, { id: '2', type: 'incoming', title: 'Palmpay (9123565629)', details: '03 Jan, 07:32 AM', amount: 12200.00, date: '03 Jan', timestamp: '07:32 AM', status: 'SUCCESS' }];
+    return saved ? JSON.parse(saved) : [{ id: '1', type: 'incoming', title: 'Opay (507872******0070)', details: '03 Jan, 08:13 AM', amount: 2600.00, date: '03 Jan', timestamp: '08:13 AM' }, { id: '2', type: 'incoming', title: 'Palmpay (9123565629)', details: '03 Jan, 07:32 AM', amount: 12200.00, date: '03 Jan', timestamp: '07:32 AM' }];
   });
 
+  // Unique and stable receipt references generated per transfer
+  const receiptRefs = useMemo(() => {
+    const lastId = transactions[0]?.id || Date.now().toString();
+    const tx = `TRF|${Math.random().toString(36).substring(2, 11).toUpperCase()}${lastId}${Math.floor(1000 + Math.random() * 8999)}`;
+    const prov = Array.from({length: 3}, () => Math.floor(1000000000 + Math.random() * 8999999999)).join('').substring(0, 30);
+    return { tx, prov };
+  }, [transactions[0]?.id, transferStep === 'receipt']);
+
   const handleLogout = () => { if (currentUserWallet && !isAdmin) UserStore.updateUser(currentUserWallet, { isOnline: false }); setIsAuthenticated(false); setIsAdmin(false); setCurrentUserWallet(""); setIsProfileOpen(false); setCurrentUser(null); };
-  useEffect(() => { if (isAuthenticated && isAdmin) { let timeoutId: number; const resetTimer = () => { if (timeoutId) clearTimeout(timeoutId); timeoutId = window.setTimeout(handleLogout, 10 * 60 * 1000); }; window.addEventListener('mousemove', resetTimer); window.addEventListener('keypress', resetTimer); window.addEventListener('touchstart', resetTimer); resetTimer(); return () => { window.removeEventListener('mousemove', resetTimer); window.removeEventListener('keypress', resetTimer); window.removeEventListener('touchstart', resetTimer); if (timeoutId) clearTimeout(timeoutId); }; } }, [isAuthenticated, isAdmin]);
   const handleLoginSuccess = (name: string, wallet: string, userBalance: number, isAdm: boolean = false) => { 
     setUserName(name); 
     setCurrentUserWallet(wallet); 
@@ -493,17 +470,16 @@ const App: React.FC = () => {
     const users = UserStore.getUsers();
     setCurrentUser(users.find(u => u.user_id === wallet) || null);
   };
-  useEffect(() => { if (isAuthenticated && !isAdmin) { const syncInterval = setInterval(() => { const users = UserStore.getUsers(); const me = users.find(u => u.user_id === currentUserWallet); if (me) { setBalance(me.wallet_balance); setUserName(me.full_name); setCurrentUser(me); } const savedTx = localStorage.getItem('mp_transactions'); if (savedTx) { setTransactions(JSON.parse(savedTx)); } }, 3000); return () => clearInterval(syncInterval); } }, [isAuthenticated, isAdmin, currentUserWallet]);
+  
+  useEffect(() => { if (isAuthenticated && !isAdmin) { const syncInterval = setInterval(() => { const users = UserStore.getUsers(); const me = users.find(u => u.user_id === currentUserWallet); if (me) { setBalance(me.wallet_balance); setUserName(me.full_name); setCurrentUser(me); } }, 3000); return () => clearInterval(syncInterval); } }, [isAuthenticated, isAdmin, currentUserWallet]);
   useEffect(() => { if (isAuthenticated && !isAdmin) { localStorage.setItem(`mp_balance_${currentUserWallet}`, balance.toString()); UserStore.updateUser(currentUserWallet, { wallet_balance: balance, device_info: { type: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Terminal', version: '1.4.2-rel', lastActive: Date.now() } }); } }, [balance, isAuthenticated, isAdmin, currentUserWallet]);
   useEffect(() => { localStorage.setItem('mp_transactions', JSON.stringify(transactions)); }, [transactions]);
-  useEffect(() => { UserStore.isBiometricSupported().then(setBiometricSupported); }, []);
 
   const [animatedBalance, setAnimatedBalance] = useState(0);
   const [showDashboardSubtext, setShowDashboardSubtext] = useState(false);
   const MOCK_ACCOUNT: AccountInfo = { accountNumber: currentUserWallet || "7033730541", accountName: userName, balance: balance, cashback: 75.45, referrals: 0.00 };
   useEffect(() => { if (activeTab === AppTab.HOME && isAuthenticated && !isAdmin) { let startTimestamp: number | null = null; const duration = 1200; const startValue = animatedBalance || 0; const targetValue = balance; const animate = (timestamp: number) => { if (!startTimestamp) startTimestamp = timestamp; const progress = Math.min((timestamp - startTimestamp) / duration, 1); const currentVal = startValue + (targetValue - startValue) * progress; setAnimatedBalance(currentVal); if (progress < 1) { window.requestAnimationFrame(animate); } else { setShowDashboardSubtext(true); } }; window.requestAnimationFrame(animate); } else { setShowDashboardSubtext(false); } }, [activeTab, balance, isAuthenticated, isAdmin]);
-  useEffect(() => { if (receiverAccount.length === 10 && selectedBank) { setIsVerifying(true); setVerifiedAccountName(""); } else { setIsVerifying(false); setVerifiedAccountName(""); } }, [receiverAccount, selectedBank]);
-  const verifyAccountApi = async (): Promise<string> => { if (!selectedBank || receiverAccount.length !== 10) throw new Error("Invalid"); try { const response = await fetch(`https://nubapi.com/api/verify?account_number=${receiverAccount}&bank_code=${selectedBank.code}`, { method: 'GET', headers: { 'Authorization': `Bearer ${NUBAPI_KEY}`, 'Accept': 'application/json', 'Content-Type': 'application/json' } }); if (!response.ok) throw new Error("Verification Failed"); const data = await response.json(); if (data && data.account_name) return data.account_name; throw new Error("Not found"); } catch (error) { throw error; } };
+  
   const handleProfileUpdate = (e: React.FormEvent) => { e.preventDefault(); setIsProfileOpen(false); };
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => { setProfileImage(reader.result as string); }; reader.readAsDataURL(file); } };
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => { const val = e.target.value.replace(/[^0-9]/g, ''); setTransferAmount(val); setInsufficientFundsError(false); };
@@ -523,47 +499,12 @@ const App: React.FC = () => {
         setPinMode('inactive'); setIsValidating(true); 
         setTimeout(() => { 
           const amountVal = parseFloat(transferAmount || "0"); 
-          const totalDebit = amountVal + 20.00;
-          const newBalance = balance - totalDebit;
+          const newBalance = balance - (amountVal + 20.00);
           setBalance(newBalance);
           UserStore.updateUser(currentUserWallet, { wallet_balance: newBalance });
           
-          const bankRef = `BANK-REF-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-          const txnId = `TXN-${Date.now()}`;
-          
-          const newTx: Transaction = { 
-            id: Date.now().toString(), 
-            type: 'outgoing', 
-            title: `${verifiedAccountName}`, 
-            details: `${verifiedAccountName} | ${receiverAccount}`, 
-            amount: amountVal, 
-            date: 'Today', 
-            timestamp: 'Now',
-            status: 'PENDING',
-            bank_reference: bankRef,
-            transaction_id: txnId,
-            recipient_account: receiverAccount,
-            recipient_bank: selectedBank?.name
-          }; 
-          
-          setTransactions(prev => [newTx, ...prev]);
-          AdminStore.logAction(currentUserWallet, 'EXTERNAL_TRANSFER_INIT', txnId, `Initiated transfer to ${receiverAccount}. Ref: ${bankRef}`);
-          
-          setIsValidating(false); 
-          setTransferStep('receipt'); 
-
-          // Webhook Simulation: Automatically confirm as SUCCESS after a short delay
-          setTimeout(() => {
-            AdminStore.processBankWebhook({
-               bank_reference: bankRef,
-               transaction_id: txnId,
-               status: 'SUCCESS',
-               credited_amount: amountVal,
-               recipient_account: receiverAccount,
-               timestamp: new Date().toISOString()
-            });
-          }, 15000);
-
+          const newTx: Transaction = { id: Date.now().toString(), type: 'outgoing', title: `${verifiedAccountName}`, details: `${new Date().toLocaleString()}`, amount: amountVal, date: 'Today', timestamp: 'Now' }; 
+          setTransactions(prev => [newTx, ...prev]); setIsValidating(false); setTransferStep('receipt'); 
         }, 3000); 
       } else setPinError(result.error || "Incorrect PIN");
     } else if (pinMode === 'change_old') {
@@ -594,7 +535,7 @@ const App: React.FC = () => {
   const ServiceGridItem: React.FC<{icon: React.ReactNode, label: string, onClick?: () => void, glowClass?: string}> = ({ icon, label, onClick, glowClass }) => (<button onClick={onClick} className="flex flex-col items-center gap-2 group"><div className={`w-16 h-16 bg-[#111F35] rounded-[20px] flex items-center justify-center text-white/80 transition-all transform group-active:scale-90 border border-white/5 ${glowClass || ''}`}>{icon}</div><span className="text-[11px] font-bold text-white/70 tracking-tight">{label}</span></button>);
   const RewardCard: React.FC<{icon: React.ReactNode, title: string, amount: number, showValue?: boolean}> = ({ icon, title, amount, showValue = true }) => (<div className="flex-1 bg-[#111F35] rounded-[24px] p-4 border border-white/5 flex flex-col gap-2.5"><div className="w-9 h-9 bg-[#1D2B44] rounded-xl flex items-center justify-center">{icon}</div><div><p className="text-[10px] font-bold text-white/40 tracking-tight mb-0.5">{title}</p><p className={`text-[13px] font-bold text-white tracking-tight transition-opacity duration-1000 ${showValue ? 'opacity-100' : 'opacity-0'}`}>₦{amount.toFixed(2)}</p></div></div>);
   
-  const renderHome = () => { if (!ProtectionModule.checkAccess(isAuthenticated, "MainInterface")) return null; return (<div className="flex flex-col min-h-screen bg-[#050C1F] pb-24 animate-fade-in"><div className="px-4 pt-4 pb-2"><div className="flex items-center justify-between mb-4 px-1"><button onClick={() => setIsProfileOpen(true)} className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#111F35] flex items-center justify-center overflow-hidden border border-white/10">{profileImage ? <img src={profileImage} className="w-full h-full object-cover" /> : <span className="text-[10px] font-black text-[#FBC02D]">{userName.split(' ').map(n=>n[0]).join('').substring(0,2)}</span>}</div><span className="text-xs font-bold text-white/80">Hi, {userName.split(' ')[0]}</span></button><button className="relative p-1"><div className="w-2 h-2 bg-red-500 rounded-full absolute top-0 right-0 border-2 border-[#050C1F]"></div><HistoryIcon className="w-5 h-5 text-white/60" /></button></div><div className="bg-[#0A1D36] rounded-[32px] p-5 shadow-2xl border border-white/5 relative overflow-hidden"><div className={`flex items-center gap-2 mb-3 transition-opacity duration-1000 ${showDashboardSubtext ? 'opacity-100' : 'opacity-0'}`}><span className="text-[11px] font-medium text-white/80">{MOCK_ACCOUNT.accountNumber} | {userName}</span><button onClick={() => navigator.clipboard.writeText(MOCK_ACCOUNT.accountNumber)} className="text-white/40 hover:text-white transition-colors"><CopyIcon className="w-3.5 h-3.5" /></button></div><div className="flex items-center gap-3 mb-0.5"><h2 className="text-[26px] font-bold tracking-tight">₦{showBalance ? animatedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '****.**'}</h2><button onClick={() => setShowBalance(!showBalance)} className="text-white/40 hover:text-white transition-colors">{showBalance ? <EyeOffIcon className="w-4.5 h-4.5" /> : <EyeIcon className="w-4.5 h-4.5" />}</button></div><p className={`text-[9px] font-medium text-white/20 mb-4 transition-opacity duration-1000 ${showDashboardSubtext ? 'opacity-100' : 'opacity-0'}`}>Last updated just now</p><div className="flex gap-3"><button onClick={() => setIsAddMoneyOpen(true)} className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 px-4 py-3 rounded-full transition-all border border-white/5 active:scale-95 glow-blue-sub"><PlusIcon className="w-4 h-4 text-[#5EB5FB]" /><span className="text-[12px] font-bold">Add Money</span></button><button className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 px-4 py-3 rounded-full transition-all border border-white/5 active:scale-95 glow-yellow-sub"><HistoryIcon className="w-4 h-4 text-[#FBC02D]" /><span className="text-[12px] font-bold">History</span></button></div></div></div><div className="px-4 mb-8"><div className="flex justify-between items-center mb-4 px-1"><h3 className="text-[13px] font-bold text-white/40 uppercase tracking-widest">Services</h3><button className="text-[12px] font-bold text-[#FBC02D] glow-yellow-sub rounded-md px-1">Edit</button></div><div className="grid grid-cols-4 gap-y-6"><ServiceGridItem icon={<TransferIcon className="w-6 h-6 text-[#5EB5FB]" />} label="Transfer" onClick={() => setActiveTab(AppTab.TRANSFER)} glowClass="glow-blue-sub" /><ServiceGridItem icon={<PhoneIcon className="w-6 h-6 text-[#FBC02D]" />} label="Airtime" glowClass="glow-yellow-sub" /><ServiceGridItem icon={<SmartphoneIcon className="w-6 h-6 text-[#5EB5FB]" />} label="Data" glowClass="glow-blue-sub" /><ServiceGridItem icon={<BettingIcon className="w-6 h-6 text-[#FBC02D]" />} label="Betting" glowClass="glow-yellow-sub" /><ServiceGridItem icon={<SavingsIcon className="w-6 h-6 text-[#00D775]" />} label="Savings" glowClass="glow-green-sub" /><ServiceGridItem icon={<EducationIcon className="w-6 h-6 text-[#5EB5FB]" />} label="Education" glowClass="glow-blue-sub" /><ServiceGridItem icon={<StatementIcon className="w-6 h-6 text-white/60" />} label="Statement" glowClass="glow-white-sub" /><ServiceGridItem icon={<GridIcon className="w-6 h-6 text-white/40" />} label="Numbers" onClick={() => setActiveTab(AppTab.SERVICES)} glowClass="glow-white-sub" /></div></div><div className="px-4 mb-8"><h3 className="text-[13px] font-bold text-white/40 uppercase tracking-widest mb-4 px-1">Rewards</h3><div className="flex gap-4"><RewardCard icon={<div className="flex gap-0.5"><div className="w-2 h-2 rounded-full bg-yellow-400"></div><div className="w-2 h-2 rounded-full bg-yellow-600"></div></div>} title="Cashback" amount={MOCK_ACCOUNT.cashback} showValue={showDashboardSubtext}/><RewardCard icon={<span className="text-xl">📢</span>} title="Referrals" amount={MOCK_ACCOUNT.referrals} showValue={showDashboardSubtext}/></div></div><div className="px-4"><div className="flex items-center justify-between mb-4 px-1"><h3 className="text-[13px] font-bold text-white/40 uppercase tracking-widest">Recent transactions</h3><button className="text-[12px] font-bold text-[#FBC02D]">View All</button></div><div className="space-y-3">{transactions.map((tx) => (<div key={tx.id} className="bg-[#111F35]/30 rounded-2xl p-4 flex items-center justify-between border border-white/5"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-[#111F35] flex items-center justify-center text-white/40 border border-white/5"><ArrowDownIcon className={`w-5 h-5 ${tx.type === 'incoming' ? 'rotate-180 text-[#00D775]' : 'text-red-500'}`} /></div><div><h4 className="text-[13px] font-bold tracking-tight text-white/90">{tx.title}</h4><div className="flex items-center gap-2"><p className="text-[10px] font-medium text-white/30 uppercase tracking-tighter mt-0.5">{tx.details}</p>{tx.status === 'PENDING' && <span className="bg-[#FBC02D]/10 text-[#FBC02D] text-[7px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest animate-pulse border border-[#FBC02D]/20">Pending Verification</span>}</div></div></div><div className="text-right"><p className={`text-[14px] font-bold tracking-tight ${tx.type === 'incoming' ? 'text-[#00D775]' : 'text-white'}`}>{tx.type === 'incoming' ? '+' : '-'}₦{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div></div>))}</div></div></div>); };
+  const renderHome = () => { if (!ProtectionModule.checkAccess(isAuthenticated, "MainInterface")) return null; return (<div className="flex flex-col min-h-screen bg-[#050C1F] pb-24 animate-fade-in"><div className="px-4 pt-4 pb-2"><div className="flex items-center justify-between mb-4 px-1"><button onClick={() => setIsProfileOpen(true)} className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-[#111F35] flex items-center justify-center overflow-hidden border border-white/10">{profileImage ? <img src={profileImage} className="w-full h-full object-cover" /> : <span className="text-[10px] font-black text-[#FBC02D]">{userName.split(' ').map(n=>n[0]).join('').substring(0,2)}</span>}</div><span className="text-xs font-bold text-white/80">Hi, {userName.split(' ')[0]}</span></button><button className="relative p-1"><div className="w-2 h-2 bg-red-500 rounded-full absolute top-0 right-0 border-2 border-[#050C1F]"></div><HistoryIcon className="w-5 h-5 text-white/60" /></button></div><div className="bg-[#0A1D36] rounded-[32px] p-5 shadow-2xl border border-white/5 relative overflow-hidden"><div className={`flex items-center gap-2 mb-3 transition-opacity duration-1000 ${showDashboardSubtext ? 'opacity-100' : 'opacity-0'}`}><span className="text-[11px] font-medium text-white/80">{MOCK_ACCOUNT.accountNumber} | {userName}</span><button onClick={() => navigator.clipboard.writeText(MOCK_ACCOUNT.accountNumber)} className="text-white/40 hover:text-white transition-colors"><CopyIcon className="w-3.5 h-3.5" /></button></div><div className="flex items-center gap-3 mb-0.5"><h2 className="text-[26px] font-bold tracking-tight">₦{showBalance ? animatedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '****.**'}</h2><button onClick={() => setShowBalance(!showBalance)} className="text-white/40 hover:text-white transition-colors">{showBalance ? <EyeOffIcon className="w-4.5 h-4.5" /> : <EyeIcon className="w-4.5 h-4.5" />}</button></div><p className={`text-[9px] font-medium text-white/20 mb-4 transition-opacity duration-1000 ${showDashboardSubtext ? 'opacity-100' : 'opacity-0'}`}>Last updated just now</p><div className="flex gap-3"><button onClick={() => setIsAddMoneyOpen(true)} className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 px-4 py-3 rounded-full transition-all border border-white/5 active:scale-95 glow-blue-sub"><PlusIcon className="w-4 h-4 text-[#5EB5FB]" /><span className="text-[12px] font-bold">Add Money</span></button><button className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 px-4 py-3 rounded-full transition-all border border-white/5 active:scale-95 glow-yellow-sub"><HistoryIcon className="w-4 h-4 text-[#FBC02D]" /><span className="text-[12px] font-bold">History</span></button></div></div></div><div className="px-4 mb-8"><div className="flex justify-between items-center mb-4 px-1"><h3 className="text-[13px] font-bold text-white/40 uppercase tracking-widest">Services</h3><button className="text-[12px] font-bold text-[#FBC02D] glow-yellow-sub rounded-md px-1">Edit</button></div><div className="grid grid-cols-4 gap-y-6"><ServiceGridItem icon={<TransferIcon className="w-6 h-6 text-[#5EB5FB]" />} label="Transfer" onClick={() => setActiveTab(AppTab.TRANSFER)} glowClass="glow-blue-sub" /><ServiceGridItem icon={<PhoneIcon className="w-6 h-6 text-[#FBC02D]" />} label="Airtime" glowClass="glow-yellow-sub" /><ServiceGridItem icon={<SmartphoneIcon className="w-6 h-6 text-[#5EB5FB]" />} label="Data" glowClass="glow-blue-sub" /><ServiceGridItem icon={<BettingIcon className="w-6 h-6 text-[#FBC02D]" />} label="Betting" glowClass="glow-yellow-sub" /><ServiceGridItem icon={<SavingsIcon className="w-6 h-6 text-[#00D775]" />} label="Savings" glowClass="glow-green-sub" /><ServiceGridItem icon={<EducationIcon className="w-6 h-6 text-[#5EB5FB]" />} label="Education" glowClass="glow-blue-sub" /><ServiceGridItem icon={<StatementIcon className="w-6 h-6 text-white/60" />} label="Statement" glowClass="glow-white-sub" /><ServiceGridItem icon={<GridIcon className="w-6 h-6 text-white/40" />} label="Numbers" onClick={() => setActiveTab(AppTab.SERVICES)} glowClass="glow-white-sub" /></div></div><div className="px-4 mb-8"><h3 className="text-[13px] font-bold text-white/40 uppercase tracking-widest mb-4 px-1">Rewards</h3><div className="flex gap-4"><RewardCard icon={<div className="flex gap-0.5"><div className="w-2 h-2 rounded-full bg-yellow-400"></div><div className="w-2 h-2 rounded-full bg-yellow-600"></div></div>} title="Cashback" amount={MOCK_ACCOUNT.cashback} showValue={showDashboardSubtext}/><RewardCard icon={<span className="text-xl">📢</span>} title="Referrals" amount={MOCK_ACCOUNT.referrals} showValue={showDashboardSubtext}/></div></div><div className="px-4"><div className="flex items-center justify-between mb-4 px-1"><h3 className="text-[13px] font-bold text-white/40 uppercase tracking-widest">Recent transactions</h3><button className="text-[12px] font-bold text-[#FBC02D]">View All</button></div><div className="space-y-3">{transactions.map((tx) => (<div key={tx.id} className="bg-[#111F35]/30 rounded-2xl p-4 flex items-center justify-between border border-white/5"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-[#111F35] flex items-center justify-center text-white/40 border border-white/5"><ArrowDownIcon className={`w-5 h-5 ${tx.type === 'incoming' ? 'rotate-180 text-[#00D775]' : 'text-red-500'}`} /></div><div><h4 className="text-[13px] font-bold tracking-tight text-white/90">{tx.title}</h4><p className="text-[10px] font-medium text-white/30 uppercase tracking-tighter mt-0.5">{tx.details}</p></div></div><div className="text-right"><p className={`text-[14px] font-bold tracking-tight ${tx.type === 'incoming' ? 'text-[#00D775]' : 'text-white'}`}>{tx.type === 'incoming' ? '+' : '-'}₦{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div></div>))}</div></div></div>); };
   
   const renderValidatingScreen = () => (<div className="fixed inset-0 z-[3000] bg-[#050C1F] flex flex-col items-center justify-center animate-fade-in"><div className="relative mb-8"><div className="w-24 h-24 border-4 border-white/5 rounded-full flex items-center justify-center"><div className="w-20 h-20 border-4 border-t-[#FBC02D] border-r-transparent border-b-[#5EB5FB] border-l-transparent rounded-full animate-spin"></div></div><div className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 bg-[#00D775] rounded-full animate-neon-pulse-bounce"></div></div></div><h2 className="text-[18px] font-black tracking-[0.2em] text-white animate-neon-glow uppercase">Validating</h2></div>);
   
@@ -775,53 +716,6 @@ const App: React.FC = () => {
         );
     }
 
-    if (selectedCountry) {
-        const numbers = getNumbers(selectedCountry);
-        return (
-            <div className="flex flex-col h-screen bg-[#050C1F] animate-fade-in overflow-hidden relative">
-                <header className="px-6 py-10 border-b border-white/5 flex items-center justify-between shrink-0 bg-[#0A162B]">
-                    <button onClick={() => setSelectedCountry(null)} className="p-2 -ml-2 text-white/40 hover:text-white transition-colors"><ArrowLeftIcon className="w-6 h-6" /></button>
-                    <div className="text-center"><h3 className="text-sm font-black uppercase tracking-widest text-[#FBC02D]">{selectedCountry.name} NUMBERS</h3><p className="text-[10px] text-white/30 font-bold mt-1 uppercase tracking-widest">Select an identity</p></div>
-                    <div className="w-8"></div>
-                </header>
-
-                <div className="flex-grow overflow-y-auto p-6 scrollbar-hide">
-                    <div className="bg-[#0F172A] border border-[#5EB5FB]/30 rounded-[32px] p-6 shadow-[0_0_30px_rgba(94,181,251,0.1)] space-y-4">
-                        {numbers.map(n => (
-                            <div key={n.id} className={`p-4 rounded-2xl border transition-all ${n.isSold ? 'opacity-30 grayscale border-white/5' : n.isVIP ? 'border-[#FBC02D]/40 bg-[#FBC02D]/5 shadow-[0_0_15px_#FBC02D22]' : 'border-white/10 bg-white/[0.02]'} flex justify-between items-center group`}>
-                                <div className="flex-grow">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <p className="text-sm font-black text-white">{n.number}</p>
-                                        {n.isVIP && <span className="bg-[#FBC02D] text-black text-[7px] font-black px-1.5 py-0.5 rounded-full shadow-[0_0_8px_#FBC02D] animate-pulse">VIP</span>}
-                                        {n.isSold && <span className="bg-red-500/20 text-red-500 text-[8px] font-black px-1.5 py-0.5 rounded-md">❌ SOLD</span>}
-                                    </div>
-                                    <div className="flex gap-2 flex-wrap items-center">
-                                        {n.platforms.map(p => (
-                                            <span key={p} className="text-[8px] font-black text-white/30 uppercase border border-white/5 px-1.5 py-0.5 rounded-md">{p}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-xs font-black text-white mb-2">₦{n.price.toLocaleString()}</p>
-                                    {!n.isSold && (
-                                        <button 
-                                            onClick={() => setPurchaseChatProps({ 
-                                                initialMsg: `I WANT TO PURCHASE A PHONE NUMBER`, 
-                                                purchaseType: 'number',
-                                                purchaseContext: { item: n.number, plan: n.isVIP ? 'VIP' : 'REGULAR', price: n.price, country: selectedCountry.name, flag: selectedCountry.flag, platforms: n.platforms }
-                                            })} 
-                                            className="bg-[#5EB5FB] hover:bg-[#5EB5FB]/90 text-black text-[9px] font-black uppercase px-4 py-2 rounded-xl transition-all active:scale-95 shadow-lg"
-                                        >Buy Now</button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     return (
       <div className="flex flex-col h-screen bg-[#050C1F] animate-fade-in overflow-hidden relative">
         <header className="px-6 py-10 border-b border-white/5 flex items-center justify-between shrink-0">
@@ -844,7 +738,7 @@ const App: React.FC = () => {
                                         </div>
                                         <div className="text-left">
                                             <p className="text-[13px] font-black text-white tracking-tight">{num.number}</p>
-                                            <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest">{daysLeft}D LEFT • {num.plan}</p>
+                                            <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest">{daysLeft} Days LEFT • {num.plan}</p>
                                         </div>
                                     </div>
                                     <div className="flex flex-col items-end gap-1.5">
@@ -898,86 +792,21 @@ const App: React.FC = () => {
   };
 
   const renderReceipt = () => {
-    const lastTx = transactions[0]; 
-    const amountVal = lastTx?.amount || parseFloat(transferAmount || "35000"); 
+    const amountVal = parseFloat(transferAmount || "35000"); 
     const today = new Date(); 
     const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }; 
     const dateStr = today.toLocaleDateString('en-US', dateOptions); 
     const timeStr = today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     
-    return (
-      <div className="fixed inset-0 z-[1500] bg-[#0066F5] flex flex-col items-center overflow-y-auto scrollbar-hide">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-          <svg className="absolute -top-20 -left-20 w-[400px] h-[400px]" viewBox="0 0 200 200"><path d="M0,100 C50,0 150,0 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(-45 100 100)" /><path d="M0,100 C50,200 150,200 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(25 100 100)" /></svg>
-        </div>
-        <div className="w-full max-w-md px-6 py-10 flex flex-col items-center shrink-0 relative z-10">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg"><span className="text-[#0066F5] font-black text-2xl">M</span></div>
-            <div className="flex flex-col">
-              <h1 className="text-white font-black text-2xl leading-none tracking-tighter">Moniepoint</h1>
-              <p className="text-white/60 text-[8px] font-bold tracking-widest uppercase mt-0.5">Microfinance Bank</p>
-            </div>
-          </div>
-          <div className="w-full bg-white rounded-t-[32px] pt-8 pb-1 flex flex-col relative shadow-2xl">
-            <div className="absolute top-6 right-6">
-              <div className="w-8 h-8 bg-[#0066F5] rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">M</span></div>
-            </div>
-            <div className="px-8 mb-4">
-              <span className="inline-block bg-[#E6F0FF] text-[#0066F5] text-[10px] font-black px-2.5 py-1 rounded-md mb-3 tracking-widest uppercase">{lastTx?.status === 'PENDING' ? 'Processing' : 'Debit'}</span>
-              <h2 className="text-[36px] font-black text-[#050C1F] leading-none mb-1">₦{amountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
-            </div>
-            <div className="bg-[#F8FAFF] mx-4 rounded-[24px] p-6 space-y-6">
-              <div>
-                <p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Type</p>
-                <span className="bg-[#E6F0FF] text-[#0066F5] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider uppercase">External Transfer</span>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Status</p>
-                <span className={`text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider ${lastTx?.status === 'PENDING' ? 'bg-[#FBC02D]/10 text-[#FBC02D]' : 'bg-[#E6F9F0] text-[#00D775]'}`}>
-                  {lastTx?.status || 'Successful'}
-                </span>
-              </div>
-              <div className="w-full h-px bg-gray-100"></div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                 <div>
-                   <p className="text-[9px] font-bold text-gray-300 uppercase mb-1">Transaction ID</p>
-                   <p className="text-[11px] font-mono font-bold text-gray-800 break-all">{lastTx?.transaction_id || 'TXN-7891011'}</p>
-                 </div>
-                 <div>
-                   <p className="text-[9px] font-bold text-gray-300 uppercase mb-1">Bank Reference</p>
-                   <p className="text-[11px] font-mono font-bold text-gray-800 break-all">{lastTx?.bank_reference || 'REF-ABC123456'}</p>
-                 </div>
-              </div>
+    // Stable generate unique reference numbers for the current receipt view
+    const txRef = receiptRefs.tx;
+    const providerRef = receiptRefs.prov;
 
-              <div>
-                <p className="text-[11px] font-medium text-gray-400 mb-1">Beneficiary</p>
-                <p className="text-[13px] font-bold text-gray-900 uppercase">{lastTx?.title || verifiedAccountName} | {lastTx?.recipient_account || receiverAccount}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-gray-400 mb-2">Beneficiary Institution</p>
-                <p className="text-[13px] font-bold text-gray-900 uppercase">{lastTx?.recipient_bank || selectedBank?.name}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-gray-400 mb-1">Sender Name</p>
-                <p className="text-[13px] font-bold text-gray-900 uppercase">{userName}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Date</p>
-                <p className="text-[13px] font-bold text-gray-900">{dateStr} | {timeStr}</p>
-              </div>
-            </div>
-            <div className="w-full relative -bottom-2 h-10 overflow-hidden shrink-0 mt-4"><svg width="100%" height="20" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0,0 L0,10 L5,15 L10,10 L15,15 L20,10 L25,15 L30,10 L35,15 L40,10 L45,15 L50,10 L55,15 L60,10 L65,15 L70,10 L75,15 L80,10 L85,15 L90,10 L95,15 L100,10 L100,0 Z" fill="white" /></svg></div>
-          </div>
-          <div className="w-full max-md px-4 mt-8 space-y-4 relative z-10 mb-20">
-            <button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-4 rounded-xl bg-white text-[#0066F5] font-black text-sm tracking-widest uppercase shadow-xl">Share Receipt</button>
-            <button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-2 text-white/60 font-bold text-sm">Done</button>
-          </div>
-        </div>
-      </div>
+    return (
+      <div className="fixed inset-0 z-[1500] bg-[#0066F5] flex flex-col items-center overflow-y-auto scrollbar-hide"><div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20"><svg className="absolute -top-20 -left-20 w-[400px] h-[400px]" viewBox="0 0 200 200"><path d="M0,100 C50,0 150,0 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(-45 100 100)" /><path d="M0,100 C50,200 150,200 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(25 100 100)" /></svg></div><div className="w-full max-w-md px-6 py-10 flex flex-col items-center shrink-0 relative z-10"><div className="flex items-center gap-2 mb-8"><div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg"><span className="text-[#0066F5] font-black text-2xl">M</span></div><div className="flex flex-col"><h1 className="text-white font-black text-2xl leading-none tracking-tighter">Moniepoint</h1><p className="text-white/60 text-[8px] font-bold tracking-widest uppercase mt-0.5">Microfinance Bank</p></div></div><div className="w-full bg-white rounded-t-[32px] pt-8 pb-1 flex flex-col relative shadow-2xl"><div className="absolute top-6 right-6"><div className="w-8 h-8 bg-[#0066F5] rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">M</span></div></div><div className="px-8 mb-4"><span className="inline-block bg-[#E6F0FF] text-[#0066F5] text-[10px] font-black px-2.5 py-1 rounded-md mb-3 tracking-widest">DEBIT</span><h2 className="text-[36px] font-black text-[#050C1F] leading-none mb-1">₦{amountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2></div><div className="bg-[#F8FAFF] mx-4 rounded-[24px] p-6 space-y-6"><div><p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Type</p><span className="bg-[#E6F0FF] text-[#0066F5] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider">TRANSFER</span></div><div><p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Status</p><span className="bg-[#E6F9F0] text-[#00D775] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider">Successful</span></div><div className="w-full h-px bg-gray-100"></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Beneficiary</p><p className="text-[13px] font-bold text-gray-900 uppercase">{verifiedAccountName || 'DANIEL SAM'} | {receiverAccount}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-2">Beneficiary Institution</p><p className="text-[13px] font-bold text-gray-900 uppercase">{selectedBank?.name}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Sender Name</p><p className="text-[13px] font-bold text-gray-900 uppercase">{userName}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Source Institution</p><p className="text-[13px] font-bold text-gray-900 uppercase tracking-widest">MONIEPOINT</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Date</p><p className="text-[13px] font-bold text-gray-900">{dateStr} | {timeStr}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Reference</p><p className="text-[13px] font-bold text-gray-900 uppercase break-all leading-tight">{txRef}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Provider Reference</p><p className="text-[13px] font-bold text-gray-900 uppercase break-all leading-tight">{providerRef}</p></div></div><div className="w-full relative -bottom-2 h-10 overflow-hidden shrink-0 mt-4"><svg width="100%" height="20" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0,0 L0,10 L5,15 L10,10 L15,15 L20,10 L25,15 L30,10 L35,15 L40,10 L45,15 L50,10 L55,15 L60,10 L65,15 L70,10 L75,15 L80,10 L85,15 L90,10 L95,15 L100,10 L100,0 Z" fill="white" /></svg></div></div><div className="w-full max-w-md px-4 mt-8 space-y-4 relative z-10 mb-20"><button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-4 rounded-xl bg-white text-[#0066F5] font-black text-sm tracking-widest uppercase shadow-xl">Share Receipt</button><button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-2 text-white/60 font-bold text-sm">Done</button></div></div></div>
     );
   };
-  const renderTransfer = () => { if (!ProtectionModule.checkAccess(isAuthenticated, "TransferPage")) return null; if (transferStep === 'receipt') return renderReceipt(); if (isValidating) return renderValidatingScreen(); if (transferStep === 'amount') return renderAddAmount(); if (transferStep === 'summary') return renderSummary(); const filteredBanks = NIGERIAN_BANKS.filter(bank => bank.name.toLowerCase().includes(bankSearchQuery.toLowerCase())); const isContinueEnabled = receiverAccount.length === 10 && selectedBank !== null && verifiedAccountName.length > 0; return (<div className="flex flex-col h-screen bg-[#050C1F] overflow-hidden animate-fade-in"><div className="px-4 py-3 flex items-center justify-between border-b border-white/5 bg-[#050C1F] shrink-0"><button onClick={() => { setActiveTab(AppTab.HOME); setReceiverAccount(""); setSelectedBank(null); }} className="p-1 -ml-1"><ArrowLeftIcon className="w-5 h-5" /></button><h2 className="text-[13px] font-bold tracking-tight">Start your transfer</h2><div className="flex items-center gap-3"><HistoryIcon className="w-5 h-5 opacity-60" /><MoreVerticalIcon className="w-5 h-5 opacity-60" /></div></div><div className="bg-[#11152B] py-2 px-4 flex items-center justify-center gap-2 shrink-0"><span className="text-[10px]">🎉</span><p className="text-[#9D95FF] text-[9px] font-bold text-center tracking-tight">Moniepoint transfers are free & instant</p></div><div className="flex-grow overflow-y-auto px-4 py-4 space-y-4 pb-48 scrollbar-hide"><div className="space-y-1.5"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Receiver's account number</p><div className={`bg-[#111F35] rounded-xl p-3 border transition-all ${receiverAccount.length > 0 ? 'border-[#FBC02D]/40' : 'border-white/5'}`}><div className="flex items-center px-2"><input type="text" value={receiverAccount} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); if (val.length <= 10) setReceiverAccount(val); }} className="bg-transparent text-[16px] font-bold text-white w-full outline-none" autoFocus />{receiverAccount.length > 0 && <button onClick={() => { setReceiverAccount(""); setVerifiedAccountName(""); setSelectedBank(null); }} className="ml-1 opacity-60"><CloseCircleIcon className="w-5 h-5" /></button></div></div></div>{isVerifying && !verifiedAccountName && <VerifyingAccountWidget verifyAccount={verifyAccountApi} onComplete={(name) => setVerifiedAccountName(name)} onError={() => {}} />}{verifiedAccountName && (<div className="bg-[#111F35] p-3 rounded-xl border border-white/5 flex items-center gap-3 animate-fade-in shadow-lg"><div className="relative"><div className="w-10 h-10 bg-[#1D2B44] rounded-full flex items-center justify-center font-bold text-white/30 text-[11px]">{verifiedAccountName.split(' ').map(n => n[0]).join('').substring(0, 2)}</div>{selectedBank?.name.toLowerCase().includes('opay') && <div className="absolute -bottom-0.5 -right-0.5"><OPayIcon className="w-4 h-4 border border-[#111F35] rounded-full" /></div>}</div><div className="flex-grow min-w-0"><h4 className="font-bold text-[12px] text-white/90 truncate uppercase tracking-tight">{verifiedAccountName}</h4><p className="text-[10px] text-white/30 font-medium truncate">{selectedBank?.name} • {receiverAccount}</p></div></div>)}<div className="space-y-3 pt-1"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Select a bank</p><div className="bg-[#111F35] flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-white/5 sticky top-0 z-10 shadow-lg"><SearchIcon className="w-4 h-4 text-white/40" /><input type="text" placeholder="Search bank name..." value={bankSearchQuery} onChange={(e) => setBankSearchQuery(e.target.value)} className="bg-transparent flex-grow text-[11px] outline-none" /></div><div className="bg-[#111F35] rounded-xl border border-white/5 overflow-hidden divide-y divide-white/5">{filteredBanks.map((bank) => (<button key={bank.code} onClick={() => setSelectedBank(bank)} className={`w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors ${selectedBank?.code === bank.code ? 'bg-[#5EB5FB]/5' : ''}`}><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${selectedBank?.code === bank.code ? 'bg-[#5EB5FB]/20' : 'bg-[#1D2B44]'}`}>{bank.name === "OPay" ? <OPayIcon className="w-4.5 h-4.5" /> : <BankBuildingIcon className={`w-3.5 h-3.5 ${selectedBank?.code === bank.code ? 'text-[#5EB5FB]' : 'text-[#FBC02D]'}`} />}</div><span className={`font-bold text-[11px] text-left truncate max-w-[200px] ${selectedBank?.code === bank.code ? 'text-[#5EB5FB]' : 'text-white/80'}`}>{bank.name}</span></div></button>))}</div></div></div><div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6 bg-gradient-to-t from-[#050C1F] via-[#050C1F] to-transparent z-[200]"><button disabled={!isContinueEnabled} onClick={() => setIsConfirmingRecipient(true)} className={`w-full py-4 rounded-xl font-black text-[13px] tracking-widest uppercase transition-all transform active:scale-95 shadow-2xl ${isContinueEnabled ? 'bg-[#5EB5FB] text-[#050C1F]' : 'bg-[#111F35] text-white/10 border border-white/5'}`}>Continue</button></div>{isConfirmingRecipient && (<div className="fixed inset-0 z-[300] flex flex-col justify-end"><div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsConfirmingRecipient(false)}></div><div className="relative bg-[#0A1A2F] rounded-t-[32px] p-6 pt-12 pb-10 flex flex-col items-center animate-slide-up shadow-2xl border-t border-white/5"><div className="absolute top-4 left-1/2 -translate-x-1/2 w-16 h-1 bg-white/10 rounded-full"></div><div className="relative mb-6"><div className="w-20 h-20 bg-[#1D2B44] rounded-full flex items-center justify-center font-bold text-white/40 text-[24px]">{verifiedAccountName.split(' ').map(n => n[0]).join('').substring(0, 2)}</div>{selectedBank?.name.toLowerCase().includes('opay') && <div className="absolute bottom-0 right-0 p-1 bg-[#0A1A2F] rounded-full"><div className="bg-[#1D2B44] p-1.5 rounded-full border border-white/10"><OPayIcon className="w-6 h-6" /></div></div>}</div><div className="text-center mb-8 w-full"><p className="text-[12px] text-white/40 font-medium mb-2 tracking-tight">Sending money to</p><h3 className="text-[20px] font-bold text-white mb-1.5 tracking-tight">{verifiedAccountName}</h3><p className="text-[13px] text-white/60 font-medium">{selectedBank?.name} • {receiverAccount}</p></div><div className="w-full h-[1px] bg-white/5 mb-6"></div><div className="w-full flex justify-between items-center px-2 mb-10"><span className="text-[14px] font-medium text-white/70">Add to saved beneficiaries?</span><button onClick={() => setSaveAsBeneficiary(!saveAsBeneficiary)} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${saveAsBeneficiary ? 'bg-[#5EB5FB]' : 'bg-white/10'}`}><div className={`absolute top-0.5 w-4.5 h-4.5 rounded-full transition-transform duration-300 transform ${saveAsBeneficiary ? 'translate-x-6' : 'translate-x-0'}`}></div></button></div><div className="w-full space-y-4"><button onClick={() => { setIsConfirmingRecipient(false); setTransferStep('amount'); }} className="w-full bg-[#FBC02D] text-[#050C1F] py-4 rounded-xl font-bold text-[14px] shadow-lg active:scale-95 transition-transform">Confirm Recipient</button><button onClick={() => setIsConfirmingRecipient(false)} className="w-full text-white/60 py-2 font-bold text-[14px] hover:text-white transition-colors">Cancel</button></div></div></div>)}</div>); };
+  const renderTransfer = () => { if (!ProtectionModule.checkAccess(isAuthenticated, "TransferPage")) return null; if (transferStep === 'receipt') return renderReceipt(); if (isValidating) return renderValidatingScreen(); if (transferStep === 'amount') return renderAddAmount(); if (transferStep === 'summary') return renderSummary(); const filteredBanks = NIGERIAN_BANKS.filter(bank => bank.name.toLowerCase().includes(bankSearchQuery.toLowerCase())); const isContinueEnabled = receiverAccount.length === 10 && selectedBank !== null && verifiedAccountName.length > 0; return (<div className="flex flex-col h-screen bg-[#050C1F] overflow-hidden animate-fade-in"><div className="px-4 py-3 flex items-center justify-between border-b border-white/5 bg-[#050C1F] shrink-0"><button onClick={() => { setActiveTab(AppTab.HOME); setReceiverAccount(""); setSelectedBank(null); }} className="p-1 -ml-1"><ArrowLeftIcon className="w-5 h-5" /></button><h2 className="text-[13px] font-bold tracking-tight">Start your transfer</h2><div className="flex items-center gap-3"><HistoryIcon className="w-5 h-5 opacity-60" /><MoreVerticalIcon className="w-5 h-5 opacity-60" /></div></div><div className="bg-[#11152B] py-2 px-4 flex items-center justify-center gap-2 shrink-0"><span className="text-[10px]">🎉</span><p className="text-[#9D95FF] text-[9px] font-bold text-center tracking-tight">Moniepoint transfers are free & instant</p></div><div className="flex-grow overflow-y-auto px-4 py-4 space-y-4 pb-48 scrollbar-hide"><div className="space-y-1.5"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Receiver's account number</p><div className={`bg-[#111F35] rounded-xl p-3 border transition-all ${receiverAccount.length > 0 ? 'border-[#FBC02D]/40' : 'border-white/5'}`}><div className="flex items-center px-2"><input type="text" value={receiverAccount} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); if (val.length <= 10) setReceiverAccount(val); }} className="bg-transparent text-[16px] font-bold text-white w-full outline-none" autoFocus />{receiverAccount.length > 0 && <button onClick={() => { setReceiverAccount(""); setVerifiedAccountName(""); setSelectedBank(null); }} className="ml-1 opacity-60"><CloseCircleIcon className="w-5 h-5" /></button>}</div></div></div><div className="space-y-3 pt-1"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Select a bank</p><div className="bg-[#111F35] flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-white/5 sticky top-0 z-10 shadow-lg"><SearchIcon className="w-4 h-4 text-white/40" /><input type="text" placeholder="Search bank name..." value={bankSearchQuery} onChange={(e) => setBankSearchQuery(e.target.value)} className="bg-transparent flex-grow text-[11px] outline-none" /></div><div className="bg-[#111F35] rounded-xl border border-white/5 overflow-hidden divide-y divide-white/5">{filteredBanks.map((bank) => (<button key={bank.code} onClick={() => setSelectedBank(bank)} className={`w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors ${selectedBank?.code === bank.code ? 'bg-[#5EB5FB]/5' : ''}`}><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${selectedBank?.code === bank.code ? 'bg-[#5EB5FB]/20' : 'bg-[#1D2B44]'}`}>{bank.name === "OPay" ? <OPayIcon className="w-4.5 h-4.5" /> : <BankBuildingIcon className={`w-3.5 h-3.5 ${selectedBank?.code === bank.code ? 'text-[#5EB5FB]' : 'text-[#FBC02D]'}`} />}</div><span className={`font-bold text-[11px] text-left truncate max-w-[200px] ${selectedBank?.code === bank.code ? 'text-[#5EB5FB]' : 'text-white/80'}`}>{bank.name}</span></div></button>))}</div></div><div className="space-y-1.5 pt-1"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Receiver's account name</p><div className={`bg-[#111F35] rounded-xl p-3 border transition-all ${verifiedAccountName.length > 0 ? 'border-[#FBC02D]/40' : 'border-white/5'}`}><div className="flex items-center px-2"><input type="text" value={verifiedAccountName} onChange={(e) => setVerifiedAccountName(e.target.value.toUpperCase())} className="bg-transparent text-[16px] font-bold text-white w-full outline-none" placeholder="ENTER ACCOUNT NAME" /></div></div></div></div><div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6 bg-gradient-to-t from-[#050C1F] via-[#050C1F] to-transparent z-[200]"><button disabled={!isContinueEnabled} onClick={() => setIsConfirmingRecipient(true)} className={`w-full py-4 rounded-xl font-black text-[13px] tracking-widest uppercase transition-all transform active:scale-95 shadow-2xl ${isContinueEnabled ? 'bg-[#5EB5FB] text-[#050C1F]' : 'bg-[#111F35] text-white/10 border border-white/5'}`}>Continue</button></div>{isConfirmingRecipient && (<div className="fixed inset-0 z-[300] flex flex-col justify-end"><div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsConfirmingRecipient(false)}></div><div className="relative bg-[#0A1A2F] rounded-t-[32px] p-6 pt-12 pb-10 flex flex-col items-center animate-slide-up shadow-2xl border-t border-white/5"><div className="absolute top-4 left-1/2 -translate-x-1/2 w-16 h-1 bg-white/10 rounded-full"></div><div className="relative mb-6"><div className="w-20 h-20 bg-[#1D2B44] rounded-full flex items-center justify-center font-bold text-white/40 text-[24px]">{verifiedAccountName.split(' ').map(n => n[0]).join('').substring(0, 2)}</div>{selectedBank?.name.toLowerCase().includes('opay') && <div className="absolute bottom-0 right-0 p-1 bg-[#0A1A2F] rounded-full"><div className="bg-[#1D2B44] p-1.5 rounded-full border border-white/10"><OPayIcon className="w-6 h-6" /></div></div>}</div><div className="text-center mb-8 w-full"><p className="text-[12px] text-white/40 font-medium mb-2 tracking-tight">Sending money to</p><h3 className="text-[20px] font-bold text-white mb-1.5 tracking-tight">{verifiedAccountName}</h3><p className="text-[13px] text-white/60 font-medium">{selectedBank?.name} • {receiverAccount}</p></div><div className="w-full h-[1px] bg-white/5 mb-6"></div><div className="w-full flex justify-between items-center px-2 mb-10"><span className="text-[14px] font-medium text-white/70">Add to saved beneficiaries?</span><button onClick={() => setSaveAsBeneficiary(!saveAsBeneficiary)} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${saveAsBeneficiary ? 'bg-[#5EB5FB]' : 'bg-white/10'}`}><div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 transform ${saveAsBeneficiary ? 'translate-x-6' : 'translate-x-0'}`}></div></button></div><div className="w-full space-y-4"><button onClick={() => { setIsConfirmingRecipient(false); setTransferStep('amount'); }} className="w-full bg-[#FBC02D] text-[#050C1F] py-4 rounded-xl font-bold text-[14px] shadow-lg active:scale-95 transition-transform">Confirm Recipient</button><button onClick={() => setIsConfirmingRecipient(false)} className="w-full text-white/60 py-2 font-bold text-[14px] hover:text-white transition-colors">Cancel</button></div></div></div>)}</div>); };
 
   const renderAddAmount = () => {
     const isAmountValid = parseInt(transferAmount || "0") >= 100;

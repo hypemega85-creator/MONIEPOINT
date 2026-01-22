@@ -6,11 +6,6 @@ export interface Transaction {
   amount: number;
   date: string;
   timestamp: string;
-  status?: 'SUCCESS' | 'FAILED' | 'REVERSED' | 'PENDING';
-  bank_reference?: string;
-  transaction_id?: string;
-  recipient_account?: string;
-  recipient_bank?: string;
 }
 
 export interface AccountInfo {
@@ -49,8 +44,6 @@ export interface VirtualCard {
   status: 'active' | 'pending';
   purchasedAt: number;
   balance: number;
-  // Added label property to match usage in App and Admin panels
-  label: string;
 }
 
 export type NumberPlan = 'REGULAR' | 'VIP';
@@ -111,15 +104,6 @@ export interface AdminMessage {
   autoHide?: boolean;
 }
 
-export interface WebhookPayload {
-  bank_reference: string;
-  transaction_id: string;
-  status: 'SUCCESS' | 'FAILED' | 'REVERSED';
-  credited_amount: number;
-  recipient_account: string;
-  timestamp: string;
-}
-
 export type WalletPlanType = 'REGULAR' | 'PREMIUM' | 'MASTER' | 'LEGEND';
 
 export interface WalletPlan {
@@ -145,8 +129,8 @@ export interface WalletChatMessage {
   purchaseCountryFlag?: string;
   plan?: WalletPlanType;
   timestamp: number;
-  countdown?: number; 
-  fileData?: string; 
+  countdown?: number; // In seconds
+  fileData?: string; // base64 for images or audio
   seen: boolean;
   notes?: string;
   isDeclined?: boolean;
