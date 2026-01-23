@@ -286,12 +286,16 @@ Account Name: ETIM`;
     }
   },
 
-  markAsSeen(userId: string) {
+  markAsSeen(userId: string, messageId?: string) {
     const data = localStorage.getItem(CHAT_KEY);
     const allMessages: WalletChatMessage[] = data ? JSON.parse(data) : [];
     const updated = allMessages.map(m => {
-      if (m.to === userId && (m.from === 'admin' || m.from === 'system')) {
-        return { ...m, seen: true };
+      if (messageId) {
+        if (m.id === messageId) return { ...m, seen: true };
+      } else {
+        if (m.to === userId && (m.from === 'admin' || m.from === 'system')) {
+          return { ...m, seen: true };
+        }
       }
       return m;
     });

@@ -54,6 +54,59 @@ const RAW_COUNTRIES = [
   { name: 'China', flag: '🇨🇳', code: '+86' }
 ];
 
+const PHONE_NUMBERS_DATA: Record<string, string[]> = {
+  'Nigeria': [
+    '+234 803 746 9214', '+234 706 519 4832', '+234 814 237 6905', '+234 902 684 1759',
+    '+234 705 391 8460', '+234 812 574 2098', '+234 809 163 7482', '+234 816 490 5371',
+    '+234 703 825 6149', '+234 901 472 3865'
+  ],
+  'United States': [
+    '+1 347 918 6024', '+1 213 447 8391', '+1 469 782 1546', '+1 646 305 9278',
+    '+1 415 692 4803', '+1 281 537 9162', '+1 702 884 3659', '+1 917 426 7085',
+    '+1 503 741 2986', '+1 404 865 1374'
+  ],
+  'United Kingdom': [
+    '+44 7911 483726', '+44 7408 296531', '+44 7865 917204', '+44 7523 684910',
+    '+44 7739 502841', '+44 7982 146395', '+44 7426 938517', '+44 7704 815629',
+    '+44 7891 360482', '+44 7549 927816'
+  ],
+  'Canada': [
+    '+1 647 392 8415', '+1 416 785 9302', '+1 905 641 2789', '+1 778 504 9163',
+    '+1 604 839 1574', '+1 519 472 8061', '+1 403 691 2847', '+1 780 935 6148',
+    '+1 289 507 3926', '+1 438 864 1709'
+  ],
+  'China': [
+    '+86 138 4729 6153', '+86 159 3064 9827', '+86 187 5418 2036', '+86 136 8902 4715',
+    '+86 150 7294 6831', '+86 178 3641 5908', '+86 139 8520 7462', '+86 188 4176 2950',
+    '+86 131 6049 8371', '+86 155 2983 4607'
+  ],
+  'Germany': [
+    '+49 151 73846295', '+49 176 59018427', '+49 157 29486013', '+49 152 84137690',
+    '+49 160 93752841', '+49 175 40629817', '+49 162 75930468', '+49 171 68420593',
+    '+49 155 93861742', '+49 163 50294186'
+  ],
+  'France': [
+    '+33 6 42 91 83 57', '+33 7 58 36 40 92', '+33 6 19 74 52 86', '+33 7 63 28 91 40',
+    '+33 6 85 47 30 19', '+33 7 14 69 82 53', '+33 6 27 95 61 48', '+33 7 90 53 26 71',
+    '+33 6 73 08 94 62', '+33 7 46 81 35 09'
+  ],
+  'Ghana': [
+    '+233 244 783 915', '+233 207 594 836', '+233 555 621 407', '+233 543 890 172',
+    '+233 268 437 590', '+233 501 928 364', '+233 271 604 859', '+233 209 741 538',
+    '+233 241 836 907', '+233 553 492 681'
+  ],
+  'South Africa': [
+    '+27 72 483 9165', '+27 81 590 3724', '+27 79 264 5081', '+27 63 917 8426',
+    '+27 76 405 1398', '+27 82 748 3609', '+27 71 592 8473', '+27 60 839 2175',
+    '+27 74 186 9502', '+27 78 604 7319'
+  ],
+  'India': [
+    '+91 98765 21409', '+91 91234 78956', '+91 99872 43061', '+91 93456 82170',
+    '+91 87654 19382', '+91 90918 54726', '+91 98123 64095', '+91 95567 38241',
+    '+91 88890 51673', '+91 97246 80915'
+  ]
+};
+
 const ProtectionModule = {
   checkAccess: (isAuthenticated: boolean, featureName: string) => {
     if (!isAuthenticated) {
@@ -291,31 +344,66 @@ INSTRUCTIONS:
 };
 
 const UserPopupReceiver: React.FC<{ userId: string }> = ({ userId }) => {
-  const [systemOverlay, setSystemOverlay] = useState<WalletChatMessage | null>(null);
+  const [activeNotification, setActiveNotification] = useState<WalletChatMessage | null>(null);
+
   useEffect(() => {
     const check = () => {
       const chats = WalletStore.getMessages(userId);
-      const unseenSystem = chats.find(m => m.type === 'animation' && !m.seen);
-      if (unseenSystem) { setSystemOverlay(unseenSystem); WalletStore.markAsSeen(userId); setTimeout(() => setSystemOverlay(null), 7000); }
+      // Logic for persistence: Find the first message from admin/system that is NOT seen.
+      // This will stay on screen until markAsSeen is called for this specific ID.
+      const unreadAdminMsg = chats.find(m => (m.from === 'admin' || m.from === 'system') && !m.seen);
+      
+      if (unreadAdminMsg) {
+        if (!activeNotification || activeNotification.id !== unreadAdminMsg.id) {
+          setActiveNotification(unreadAdminMsg);
+        }
+      } else {
+        setActiveNotification(null);
+      }
     };
-    const interval = setInterval(check, 3000); return () => clearInterval(interval);
-  }, [userId]);
-  if (!systemOverlay) return null;
+    const interval = setInterval(check, 2500); 
+    return () => clearInterval(interval);
+  }, [userId, activeNotification]);
+
+  if (!activeNotification) return null;
+
+  const handleAcknowledge = () => {
+    WalletStore.markAsSeen(userId, activeNotification.id);
+    setActiveNotification(null);
+  };
   
-  const isFunded = systemOverlay.content.includes("Success");
-  const isFailed = systemOverlay.content.includes("failed");
-  const isVerified = systemOverlay.content.includes("VERIFIED");
+  const isFailed = activeNotification.content.toLowerCase().includes("failed") || activeNotification.isDeclined;
 
   return (
-    <div className="fixed inset-0 z-[4000] bg-black/90 flex items-center justify-center animate-fade-in backdrop-blur-md">
-      <div className="text-center animate-slide-up px-10">
-        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 mx-auto animate-pulse ${isFailed || systemOverlay.isDeclined ? 'bg-red-500/20' : 'bg-[#00D775]/20'}`}>
-          {isFailed || systemOverlay.isDeclined ? <XIcon className="w-12 h-12 text-red-500" /> : <ShieldCheckIcon className="w-12 h-12 text-[#00D775]" />}
+    <div className="fixed inset-0 z-[5000] bg-black/85 flex items-center justify-center p-6 animate-fade-in backdrop-blur-md">
+      <div className="w-full max-w-xs bg-[#0A162B] border border-white/10 rounded-[32px] p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)] animate-slide-up text-center flex flex-col items-center">
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 animate-pulse ${isFailed ? 'bg-red-500/10' : 'bg-[#00D775]/10'}`}>
+          {isFailed ? <XIcon className="w-10 h-10 text-red-500" /> : <ShieldCheckIcon className="w-10 h-10 text-[#00D775]" />}
         </div>
-        <h2 className={`text-xl font-black tracking-widest uppercase ${isFailed || systemOverlay.isDeclined ? 'text-red-500' : 'text-[#00D775]'}`}>
-          {systemOverlay.content}
-        </h2>
-        {systemOverlay.notes && <p className="text-white/40 text-xs mt-4 uppercase tracking-widest font-bold">{systemOverlay.notes}</p>}
+        
+        <h3 className={`text-[10px] font-black uppercase tracking-[0.4em] mb-4 ${isFailed ? 'text-red-500' : 'text-[#00D775]'}`}>
+          {isFailed ? 'Action Required' : 'Secure Notification'}
+        </h3>
+        
+        <div className="mb-10 max-h-[200px] overflow-y-auto scrollbar-hide">
+          <p className="text-white text-sm font-bold leading-relaxed whitespace-pre-wrap">
+            {activeNotification.content}
+          </p>
+          {activeNotification.notes && (
+            <div className="mt-4 p-3 bg-white/5 rounded-xl border border-white/5">
+              <p className="text-[9px] text-white/40 uppercase font-black tracking-widest leading-tight">
+                Ref: {activeNotification.notes}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <button 
+          onClick={handleAcknowledge}
+          className="w-full bg-white text-black py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] active:scale-95 transition-all shadow-xl hover:bg-white/90"
+        >
+          Acknowledge
+        </button>
       </div>
     </div>
   );
@@ -333,7 +421,12 @@ const WalletChatFlow: React.FC<{ userId: string, onClose: () => void, plan?: Wal
 
   useEffect(() => {
     if (initialMsg) {
-      WalletStore.sendMessage(userId, initialMsg, 'text', undefined, plan?.id, purchaseType, purchaseContext);
+      // Check if we already have this exact message in the last minute to avoid duplicates on re-renders
+      const existing = WalletStore.getMessages(userId);
+      const isDuplicate = existing.some(m => m.from === userId && m.content === initialMsg && (Date.now() - m.timestamp < 30000));
+      if (!isDuplicate) {
+        WalletStore.sendMessage(userId, initialMsg, 'text', undefined, plan?.id, purchaseType, purchaseContext);
+      }
     }
     refresh();
     const interval = setInterval(refresh, 2000);
@@ -429,6 +522,7 @@ const App: React.FC = () => {
   const [isRecurring, setIsRecurring] = useState(false);
   const [insufficientFundsError, setInsufficientFundsError] = useState(false);
   const [isAddMoneyOpen, setIsAddMoneyOpen] = useState(false);
+  const [isSupportChatOpen, setIsSupportChatOpen] = useState(false);
   const [balance, setBalance] = useState<number>(183780.46);
   const [purchaseChatProps, setPurchaseChatProps] = useState<{initialMsg: string, purchaseType: 'card' | 'number' | 'wallet', purchaseContext?: any} | null>(null);
   
@@ -625,11 +719,12 @@ const App: React.FC = () => {
         const allUsers = UserStore.getUsers();
         const allPurchased = allUsers.flatMap(u => u.boughtNumbers || []).map(n => n.number);
         
-        return Array.from({ length: 10 }).map((_, i) => {
+        const countryList = PHONE_NUMBERS_DATA[country.name] || [];
+
+        return countryList.map((numStr, i) => {
             const isVIP = i % 3 === 0;
             const isSold = i >= available;
-            const price = country.name === 'Nigeria' ? (isVIP ? 7500 : 5000) : (isVIP ? 10000 : 10000);
-            const numStr = `${country.code} ${Math.floor(800 + i)} ${Math.floor(100 + i)} ${1234 + i}`;
+            const price = country.name === 'Nigeria' ? (isVIP ? 7500 : 5000) : (isVIP ? 15000 : 10000);
             const isAlreadyBought = allPurchased.includes(numStr);
 
             return {
@@ -711,6 +806,63 @@ const App: React.FC = () => {
                         />
                         <button onClick={handleSendReply} className="bg-[#5EB5FB] text-black p-3 rounded-full active:scale-95 transition-transform"><TransferIcon className="w-5 h-5 rotate-90" /></button>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (selectedCountry) {
+        const countryNumbers = getNumbers(selectedCountry);
+        return (
+            <div className="flex flex-col h-screen bg-[#050C1F] animate-fade-in overflow-hidden relative">
+                <header className="px-6 py-10 border-b border-white/5 flex items-center justify-between bg-[#0A162B] shrink-0">
+                    <button onClick={() => setSelectedCountry(null)} className="p-2 -ml-2 text-white/40 hover:text-white transition-colors"><ArrowLeftIcon className="w-6 h-6" /></button>
+                    <div className="text-center">
+                        <h2 className="text-lg font-black text-white uppercase tracking-widest">{selectedCountry.name}</h2>
+                        <p className="text-[10px] text-[#5EB5FB] font-black uppercase tracking-[0.2em]">{selectedCountry.code} Network</p>
+                    </div>
+                    <div className="w-8"></div>
+                </header>
+
+                <div className="flex-grow overflow-y-auto px-6 py-6 space-y-4 pb-32 scrollbar-hide">
+                    {countryNumbers.map(num => (
+                        <div key={num.id} className={`w-full bg-[#111F35] border rounded-[24px] p-5 flex flex-col gap-4 shadow-xl transition-all ${num.isSold ? 'opacity-40 grayscale pointer-events-none' : 'hover:bg-[#15233D] border-white/5'}`}>
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">{selectedCountry.flag}</span>
+                                    <div className="text-left">
+                                        <p className="text-sm font-black text-white tracking-wider font-mono">{num.number}</p>
+                                        <div className="flex gap-1 mt-1">
+                                            {num.platforms.slice(0,3).map(p => (
+                                                <span key={p} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-white/5 text-white/40 rounded-sm">{p}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                {num.isVIP && <span className="text-[7px] font-black px-2 py-0.5 bg-[#FBC02D] text-black rounded-full shadow-[0_0_10px_#FBC02D55]">VIP</span>}
+                            </div>
+                            
+                            <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                                <p className="text-[11px] font-black text-[#5EB5FB]">₦{num.price.toLocaleString()}</p>
+                                <button 
+                                    onClick={() => setPurchaseChatProps({
+                                        initialMsg: "I WANT TO PURCHASE A PHONE NUMBER",
+                                        purchaseType: 'number',
+                                        purchaseContext: { 
+                                            item: num.number, 
+                                            price: num.price, 
+                                            country: selectedCountry.name, 
+                                            flag: selectedCountry.flag, 
+                                            plan: num.isVIP ? 'VIP' : 'REGULAR' 
+                                        }
+                                    })}
+                                    className="px-6 py-2.5 bg-white text-black text-[9px] font-black uppercase tracking-widest rounded-xl active:scale-95 transition-all shadow-lg"
+                                >
+                                    {num.isSold ? 'Sold Out' : 'Buy Now'}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         );
@@ -803,7 +955,7 @@ const App: React.FC = () => {
     const providerRef = receiptRefs.prov;
 
     return (
-      <div className="fixed inset-0 z-[1500] bg-[#0066F5] flex flex-col items-center overflow-y-auto scrollbar-hide"><div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20"><svg className="absolute -top-20 -left-20 w-[400px] h-[400px]" viewBox="0 0 200 200"><path d="M0,100 C50,0 150,0 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(-45 100 100)" /><path d="M0,100 C50,200 150,200 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(25 100 100)" /></svg></div><div className="w-full max-w-md px-6 py-10 flex flex-col items-center shrink-0 relative z-10"><div className="flex items-center gap-2 mb-8"><div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg"><span className="text-[#0066F5] font-black text-2xl">M</span></div><div className="flex flex-col"><h1 className="text-white font-black text-2xl leading-none tracking-tighter">Moniepoint</h1><p className="text-white/60 text-[8px] font-bold tracking-widest uppercase mt-0.5">Microfinance Bank</p></div></div><div className="w-full bg-white rounded-t-[32px] pt-8 pb-1 flex flex-col relative shadow-2xl"><div className="absolute top-6 right-6"><div className="w-8 h-8 bg-[#0066F5] rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">M</span></div></div><div className="px-8 mb-4"><span className="inline-block bg-[#E6F0FF] text-[#0066F5] text-[10px] font-black px-2.5 py-1 rounded-md mb-3 tracking-widest">DEBIT</span><h2 className="text-[36px] font-black text-[#050C1F] leading-none mb-1">₦{amountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2></div><div className="bg-[#F8FAFF] mx-4 rounded-[24px] p-6 space-y-6"><div><p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Type</p><span className="bg-[#E6F0FF] text-[#0066F5] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider">TRANSFER</span></div><div><p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Status</p><span className="bg-[#E6F9F0] text-[#00D775] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider">Successful</span></div><div className="w-full h-px bg-gray-100"></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Beneficiary</p><p className="text-[13px] font-bold text-gray-900 uppercase">{verifiedAccountName || 'DANIEL SAM'} | {receiverAccount}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-2">Beneficiary Institution</p><p className="text-[13px] font-bold text-gray-900 uppercase">{selectedBank?.name}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Sender Name</p><p className="text-[13px] font-bold text-gray-900 uppercase">{userName}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Source Institution</p><p className="text-[13px] font-bold text-gray-900 uppercase tracking-widest">MONIEPOINT</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Date</p><p className="text-[13px] font-bold text-gray-900">{dateStr} | {timeStr}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Reference</p><p className="text-[13px] font-bold text-gray-900 uppercase break-all leading-tight">{txRef}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Provider Reference</p><p className="text-[13px] font-bold text-gray-900 uppercase break-all leading-tight">{providerRef}</p></div></div><div className="w-full relative -bottom-2 h-10 overflow-hidden shrink-0 mt-4"><svg width="100%" height="20" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0,0 L0,10 L5,15 L10,10 L15,15 L20,10 L25,15 L30,10 L35,15 L40,10 L45,15 L50,10 L55,15 L60,10 L65,15 L70,10 L75,15 L80,10 L85,15 L90,10 L95,15 L100,10 L100,0 Z" fill="white" /></svg></div></div><div className="w-full max-w-md px-4 mt-8 space-y-4 relative z-10 mb-20"><button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-4 rounded-xl bg-white text-[#0066F5] font-black text-sm tracking-widest uppercase shadow-xl">Share Receipt</button><button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-2 text-white/60 font-bold text-sm">Done</button></div></div></div>
+      <div className="fixed inset-0 z-[1500] bg-[#0066F5] flex flex-col items-center overflow-y-auto scrollbar-hide"><div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20"><svg className="absolute -top-20 -left-20 w-[400px] h-[400px]" viewBox="0 0 200 200"><path d="M0,100 C50,0 150,0 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(-45 100 100)" /><path d="M0,100 C50,200 150,200 200,100" stroke="#FBC02D" strokeWidth="8" fill="none" transform="rotate(25 100 100)" /></svg></div><div className="w-full max-md px-6 py-10 flex flex-col items-center shrink-0 relative z-10"><div className="flex items-center gap-2 mb-8"><div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg"><span className="text-[#0066F5] font-black text-2xl">M</span></div><div className="flex flex-col"><h1 className="text-white font-black text-2xl leading-none tracking-tighter">Moniepoint</h1><p className="text-white/60 text-[8px] font-bold tracking-widest uppercase mt-0.5">Microfinance Bank</p></div></div><div className="w-full bg-white rounded-t-[32px] pt-8 pb-1 flex flex-col relative shadow-2xl"><div className="absolute top-6 right-6"><div className="w-8 h-8 bg-[#0066F5] rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">M</span></div></div><div className="px-8 mb-4"><span className="inline-block bg-[#E6F0FF] text-[#0066F5] text-[10px] font-black px-2.5 py-1 rounded-md mb-3 tracking-widest">DEBIT</span><h2 className="text-[36px] font-black text-[#050C1F] leading-none mb-1">₦{amountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2></div><div className="bg-[#F8FAFF] mx-4 rounded-[24px] p-6 space-y-6"><div><p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Type</p><span className="bg-[#E6F0FF] text-[#0066F5] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider">TRANSFER</span></div><div><p className="text-[11px] font-medium text-gray-400 mb-2">Transaction Status</p><span className="bg-[#E6F9F0] text-[#00D775] text-[11px] font-black px-4 py-1.5 rounded-md tracking-wider">Successful</span></div><div className="w-full h-px bg-gray-100"></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Beneficiary</p><p className="text-[13px] font-bold text-gray-900 uppercase">{verifiedAccountName || 'DANIEL SAM'} | {receiverAccount}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-2">Beneficiary Institution</p><p className="text-[13px] font-bold text-gray-900 uppercase">{selectedBank?.name}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Sender Name</p><p className="text-[13px] font-bold text-gray-900 uppercase">{userName}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Source Institution</p><p className="text-[13px] font-bold text-gray-900 uppercase tracking-widest">MONIEPOINT</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Date</p><p className="text-[13px] font-bold text-gray-900">{dateStr} | {timeStr}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Transaction Reference</p><p className="text-[13px] font-bold text-gray-900 uppercase break-all leading-tight">{txRef}</p></div><div><p className="text-[11px] font-medium text-gray-400 mb-1">Provider Reference</p><p className="text-[13px] font-bold text-gray-900 uppercase break-all leading-tight">{providerRef}</p></div></div><div className="w-full relative -bottom-2 h-10 overflow-hidden shrink-0 mt-4"><svg width="100%" height="20" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0,0 L0,10 L5,15 L10,10 L15,15 L20,10 L25,15 L30,10 L35,15 L40,10 L45,15 L50,10 L55,15 L60,10 L65,15 L70,10 L75,15 L80,10 L85,15 L90,10 L95,15 L100,10 L100,0 Z" fill="white" /></svg></div></div><div className="w-full max-md px-4 mt-8 space-y-4 relative z-10 mb-20"><button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-4 rounded-xl bg-white text-[#0066F5] font-black text-sm tracking-widest uppercase shadow-xl">Share Receipt</button><button onClick={() => { setActiveTab(AppTab.HOME); setTransferStep('recipient'); setTransferAmount(""); }} className="w-full py-2 text-white/60 font-bold text-sm">Done</button></div></div></div>
     );
   };
   const renderTransfer = () => { if (!ProtectionModule.checkAccess(isAuthenticated, "TransferPage")) return null; if (transferStep === 'receipt') return renderReceipt(); if (isValidating) return renderValidatingScreen(); if (transferStep === 'amount') return renderAddAmount(); if (transferStep === 'summary') return renderSummary(); const filteredBanks = NIGERIAN_BANKS.filter(bank => bank.name.toLowerCase().includes(bankSearchQuery.toLowerCase())); const isContinueEnabled = receiverAccount.length === 10 && selectedBank !== null && verifiedAccountName.length > 0; return (<div className="flex flex-col h-screen bg-[#050C1F] overflow-hidden animate-fade-in"><div className="px-4 py-3 flex items-center justify-between border-b border-white/5 bg-[#050C1F] shrink-0"><button onClick={() => { setActiveTab(AppTab.HOME); setReceiverAccount(""); setSelectedBank(null); }} className="p-1 -ml-1"><ArrowLeftIcon className="w-5 h-5" /></button><h2 className="text-[13px] font-bold tracking-tight">Start your transfer</h2><div className="flex items-center gap-3"><HistoryIcon className="w-5 h-5 opacity-60" /><MoreVerticalIcon className="w-5 h-5 opacity-60" /></div></div><div className="bg-[#11152B] py-2 px-4 flex items-center justify-center gap-2 shrink-0"><span className="text-[10px]">🎉</span><p className="text-[#9D95FF] text-[9px] font-bold text-center tracking-tight">Moniepoint transfers are free & instant</p></div><div className="flex-grow overflow-y-auto px-4 py-4 space-y-4 pb-48 scrollbar-hide"><div className="space-y-1.5"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Receiver's account number</p><div className={`bg-[#111F35] rounded-xl p-3 border transition-all ${receiverAccount.length > 0 ? 'border-[#FBC02D]/40' : 'border-white/5'}`}><div className="flex items-center px-2"><input type="text" value={receiverAccount} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); if (val.length <= 10) setReceiverAccount(val); }} className="bg-transparent text-[16px] font-bold text-white w-full outline-none" autoFocus />{receiverAccount.length > 0 && <button onClick={() => { setReceiverAccount(""); setVerifiedAccountName(""); setSelectedBank(null); }} className="ml-1 opacity-60"><CloseCircleIcon className="w-5 h-5" /></button>}</div></div></div><div className="space-y-3 pt-1"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Select a bank</p><div className="bg-[#111F35] flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-white/5 sticky top-0 z-10 shadow-lg"><SearchIcon className="w-4 h-4 text-white/40" /><input type="text" placeholder="Search bank name..." value={bankSearchQuery} onChange={(e) => setBankSearchQuery(e.target.value)} className="bg-transparent flex-grow text-[11px] outline-none" /></div><div className="bg-[#111F35] rounded-xl border border-white/5 overflow-hidden divide-y divide-white/5">{filteredBanks.map((bank) => (<button key={bank.code} onClick={() => setSelectedBank(bank)} className={`w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors ${selectedBank?.code === bank.code ? 'bg-[#5EB5FB]/5' : ''}`}><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${selectedBank?.code === bank.code ? 'bg-[#5EB5FB]/20' : 'bg-[#1D2B44]'}`}>{bank.name === "OPay" ? <OPayIcon className="w-4.5 h-4.5" /> : <BankBuildingIcon className={`w-3.5 h-3.5 ${selectedBank?.code === bank.code ? 'text-[#5EB5FB]' : 'text-[#FBC02D]'}`} />}</div><span className={`font-bold text-[11px] text-left truncate max-w-[200px] ${selectedBank?.code === bank.code ? 'text-[#5EB5FB]' : 'text-white/80'}`}>{bank.name}</span></div></button>))}</div></div><div className="space-y-1.5 pt-1"><p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter px-1">Receiver's account name</p><div className={`bg-[#111F35] rounded-xl p-3 border transition-all ${verifiedAccountName.length > 0 ? 'border-[#FBC02D]/40' : 'border-white/5'}`}><div className="flex items-center px-2"><input type="text" value={verifiedAccountName} onChange={(e) => setVerifiedAccountName(e.target.value.toUpperCase())} className="bg-transparent text-[16px] font-bold text-white w-full outline-none" placeholder="ENTER ACCOUNT NAME" /></div></div></div></div><div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6 bg-gradient-to-t from-[#050C1F] via-[#050C1F] to-transparent z-[200]"><button disabled={!isContinueEnabled} onClick={() => setIsConfirmingRecipient(true)} className={`w-full py-4 rounded-xl font-black text-[13px] tracking-widest uppercase transition-all transform active:scale-95 shadow-2xl ${isContinueEnabled ? 'bg-[#5EB5FB] text-[#050C1F]' : 'bg-[#111F35] text-white/10 border border-white/5'}`}>Continue</button></div>{isConfirmingRecipient && (<div className="fixed inset-0 z-[300] flex flex-col justify-end"><div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsConfirmingRecipient(false)}></div><div className="relative bg-[#0A1A2F] rounded-t-[32px] p-6 pt-12 pb-10 flex flex-col items-center animate-slide-up shadow-2xl border-t border-white/5"><div className="absolute top-4 left-1/2 -translate-x-1/2 w-16 h-1 bg-white/10 rounded-full"></div><div className="relative mb-6"><div className="w-20 h-20 bg-[#1D2B44] rounded-full flex items-center justify-center font-bold text-white/40 text-[24px]">{verifiedAccountName.split(' ').map(n => n[0]).join('').substring(0, 2)}</div>{selectedBank?.name.toLowerCase().includes('opay') && <div className="absolute bottom-0 right-0 p-1 bg-[#0A1A2F] rounded-full"><div className="bg-[#1D2B44] p-1.5 rounded-full border border-white/10"><OPayIcon className="w-6 h-6" /></div></div>}</div><div className="text-center mb-8 w-full"><p className="text-[12px] text-white/40 font-medium mb-2 tracking-tight">Sending money to</p><h3 className="text-[20px] font-bold text-white mb-1.5 tracking-tight">{verifiedAccountName}</h3><p className="text-[13px] text-white/60 font-medium">{selectedBank?.name} • {receiverAccount}</p></div><div className="w-full h-[1px] bg-white/5 mb-6"></div><div className="w-full flex justify-between items-center px-2 mb-10"><span className="text-[14px] font-medium text-white/70">Add to saved beneficiaries?</span><button onClick={() => setSaveAsBeneficiary(!saveAsBeneficiary)} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${saveAsBeneficiary ? 'bg-[#5EB5FB]' : 'bg-white/10'}`}><div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 transform ${saveAsBeneficiary ? 'translate-x-6' : 'translate-x-0'}`}></div></button></div><div className="w-full space-y-4"><button onClick={() => { setIsConfirmingRecipient(false); setTransferStep('amount'); }} className="w-full bg-[#FBC02D] text-[#050C1F] py-4 rounded-xl font-bold text-[14px] shadow-lg active:scale-95 transition-transform">Confirm Recipient</button><button onClick={() => setIsConfirmingRecipient(false)} className="w-full text-white/60 py-2 font-bold text-[14px] hover:text-white transition-colors">Cancel</button></div></div></div>)}</div>); };
@@ -851,6 +1003,28 @@ const App: React.FC = () => {
       <AITextAssistant userId={currentUserWallet} balance={balance} userName={userName} deviceType={navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Terminal'} />
       <UserPopupReceiver userId={currentUserWallet} />
       {isAddMoneyOpen && <AddMoneyFlow userId={currentUserWallet} onClose={() => setIsAddMoneyOpen(false)} />}
+      
+      {/* DIRECT ADMIN SUPPORT CHAT MODAL */}
+      {isSupportChatOpen && (
+        <WalletChatFlow 
+          userId={currentUserWallet} 
+          onClose={() => setIsSupportChatOpen(false)} 
+          initialMsg="I would like to speak with a customer representative."
+        />
+      )}
+
+      {/* FLOATING SUPPORT CHAT ICON */}
+      <div className="fixed bottom-24 left-6 z-[400]">
+        <button 
+          onClick={() => setIsSupportChatOpen(true)} 
+          className="w-16 h-16 bg-[#111F35]/60 backdrop-blur-2xl border border-white/10 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all hover:bg-[#111F35] group"
+        >
+          <div className="relative">
+            <ChatBubbleIcon className="w-8 h-8 text-[#FBC02D] group-hover:scale-110 transition-transform" />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-[#00D775] border-2 border-[#050C1F] rounded-full"></div>
+          </div>
+        </button>
+      </div>
       
       {activeTab !== AppTab.TRANSFER && (
         <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#050C1F]/90 border-t border-white/5 flex justify-around py-3 px-1 z-[100] backdrop-blur-lg">
